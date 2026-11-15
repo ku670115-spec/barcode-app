@@ -29,7 +29,19 @@ a.btn,button.btn{display:block;width:100%;padding:15px;border:0;border-radius:13
 .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 18px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none}
 .toast.show{opacity:1}
 [hidden]{display:none!important}
-</style></head><body>
+</style><script>
+// LINE 內建瀏覽器不能下載或加入主畫面：自動改用手機的瀏覽器開啟
+(function(){
+  var ua = navigator.userAgent || '';
+  var inApp = /\bLine\//i.test(ua) || /FBAN|FBAV|Instagram|MicroMessenger/i.test(ua);
+  if (!inApp) return;
+  document.addEventListener('DOMContentLoaded', function(){ var t = document.getElementById('lineTip'); if (t) t.hidden = false; });
+  if (/\bLine\//i.test(ua) && location.search.indexOf('openExternalBrowser=1') < 0){
+    location.replace(location.pathname + '?openExternalBrowser=1' + location.hash);
+  }
+})();
+</script>
+</head><body>
 <div class="wrap">
   <div class="hero">
     <img src="/apple-touch-icon.png" alt="">
@@ -37,6 +49,10 @@ a.btn,button.btn{display:block;width:100%;padding:15px;border:0;border-radius:13
     <p class="sub">打品名或品號就能叫出條碼，直接給收銀機刷</p>
   </div>
 
+  <div id="lineTip" hidden style="background:#fff3cd;color:#7a5a00;border-radius:12px;padding:14px;margin-bottom:14px;line-height:1.7;font-size:.95em">
+    ⚠ <b>你現在是用 LINE 打開的</b>，LINE 裡沒辦法安裝。<br>
+    請點右上角 <b>⋮</b> 或右下角 <b>⋯</b>，選「<b>用預設瀏覽器開啟</b>」（iPhone 選「<b>用 Safari 開啟</b>」）。
+  </div>
   <a class="btn primary" href="/">🚀 立即開始使用（網頁版）</a>
   <button class="btn soft" id="copy">📋 複製這頁連結分享給同事</button>
 
@@ -102,7 +118,7 @@ function tab(i){ $('tA').classList.toggle('on', !i); $('tI').classList.toggle('o
 $('tA').onclick = () => tab(false); $('tI').onclick = () => tab(true);
 if (/iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) tab(true);
 $('copy').onclick = async () => {
-  const link = location.origin + '/download.html';
+  const link = location.origin + '/download.html?openExternalBrowser=1';
   try { await navigator.clipboard.writeText(link); }
   catch { const i = document.createElement('input'); i.value = link; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); }
   $('t').classList.add('show'); setTimeout(() => $('t').classList.remove('show'), 1600);
