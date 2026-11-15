@@ -1,0 +1,17 @@
+plugins { id 'com.android.application' }
+android {
+  namespace 'com.bk.barcode'
+  compileSdk 34
+  defaultConfig { applicationId "com.bk.barcode"; minSdk 24; targetSdk 34; versionCode 1; versionName "1.0" }
+  // 簽章金鑰不放在公開倉庫。打包時用環境變數提供：KEYSTORE_FILE / KEYSTORE_PASS / KEY_ALIAS / KEY_PASS
+  signingConfigs {
+    release {
+      if (System.getenv('KEYSTORE_FILE')) {
+        storeFile file(System.getenv('KEYSTORE_FILE')); storePassword System.getenv('KEYSTORE_PASS')
+        keyAlias System.getenv('KEY_ALIAS'); keyPassword System.getenv('KEY_PASS')
+      }
+    }
+  }
+  buildTypes { release { minifyEnabled false; signingConfig signingConfigs.release } }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+}
