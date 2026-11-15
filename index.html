@@ -224,7 +224,7 @@ nav.tabs button.on{color:var(--brand);font-weight:700}
 <div class="form" id="form">
   <div class="bar"><button id="formCancel">取消</button><div class="sp" id="formTitle">補商品</div><button class="save" id="formSave">儲存</button></div>
   <div class="fbody">
-    <p class="hint" style="margin:0 0 12px">補的商品只存在這支手機，不會影響別人的資料。搜尋時會和原本的資料一起出現，標記「我補的」。</p>
+    <p class="hint" style="margin:0 0 12px">☁️ 補的商品會存到雲端，<b>全店同事的手機都會自動出現</b>，標記「門市補的」。不會影響原本資料來源。</p>
     <div class="field">
       <label>條碼 *</label>
       <div class="inline"><input type="text" id="fID" inputmode="numeric" autocomplete="off" placeholder="掃描或輸入條碼數字"><button class="iconbtn" id="fScan">📷</button></div>
@@ -236,9 +236,7 @@ nav.tabs button.on{color:var(--brand);font-weight:700}
     <button class="bigbtn danger" id="formDelete" hidden>刪除這個商品</button>
     <div style="margin-top:28px">
       <div class="hint" id="ownStat"></div>
-      <button class="bigbtn ghost" id="ownCopy">複製我補的資料（備份）</button>
-      <button class="bigbtn ghost" id="ownPasteBtn">貼上備份還原</button>
-      <textarea id="ownPaste" hidden style="width:100%;min-height:120px;margin-top:8px;font-size:13px;border-radius:10px;border:1.5px solid var(--line);padding:8px;background:var(--card);color:var(--text)" placeholder="把之前複製的備份文字貼在這裡，再按一次「貼上備份還原」"></textarea>
+
     </div>
   </div>
 </div>
@@ -266,7 +264,21 @@ let favs = new Set(store.get('bc_favs', []));
 let recent = store.get('bc_recent', []);
 hideDown = store.get('bc_hideDown', false);
 const keyOf = it => it.own ? 'OWN|' + it.uid : it.Type + '|' + it.ID + '|' + it.Name;
-let own = store.get('bc_own', []);   // 自己補的商品：{uid, ID, code, title, t}
+// ---- 雲端（Supabase）共用補商品 ----
+const SB_URL = 'https://bvmdwbadlhkciwxybveu.supabase.co/rest/v1/bc_items';
+const SB_KEY = 'sb_publishable_JTAwhx6XPx7QiN06tW-0Mg_qt9WfR9o';   // 公開用金鑰，本來就可以放在網頁裡
+let own = store.get('bc_cloud', []);   // 雲端資料的手機暫存：{uid, ID, code, title}
+let deviceId = store.get('bc_device', '');
+if (!deviceId){ deviceId = '手機-' + Math.random().toString(36).slice(2, 7); store.set('bc_device', deviceId); }
+async function sb(method, query, body){
+  const r = await fetch(SB_URL + (query || ''), { method, cache: 'no-store',
+    headers: { apikey: SB_KEY, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => null);
+  if (!r.ok){ const e = new Error((data && data.message) || ('HTTP ' + r.status)); e.status = r.status; e.code = data && data.code; throw e; }
+  return data;
+}
+const fromRow = r => ({ uid: r.id, ID: r.barcode, code: r.code || '', title: r.title });
 function guessType(id){ id = String(id).trim(); return /^\d{13}$/.test(id) ? 'EAN13' : /^\d{8}$/.test(id) ? 'EAN8' : /^\d{12}$/.test(id) ? 'UPCA' : 'CODE128'; }
 function ownToItem(o){
   return { own: true, uid: o.uid, Type: guessType(o.ID), ID: o.ID, Name: (o.code ? o.code + ' ' : '') + o.title, code: o.code || '', title: o.title,
@@ -364,7 +376,7 @@ function useData(text, source){
 function mergeOwn(){
   db = own.map(ownToItem).concat(baseDb);
   byKey = new Map(db.map(it => [keyOf(it), it]));
-  $('stat').textContent = `共 ${baseDb.length} 筆` + (own.length ? `＋我補的 ${own.length} 筆` : '') + (lastSource ? `・${lastSource}` : '');
+  $('stat').textContent = `共 ${baseDb.length} 筆` + (own.length ? `＋門市補的 ${own.length} 筆` : '') + (lastSource ? `・${lastSource}` : '');
 }
 
 async function loadData(){
@@ -411,7 +423,7 @@ function cardHTML(it, opt = {}){
   if (it.Down) cls += ' down';
   const tags = [];
   if (it.Down) tags.push('<span class="tag down">已下架</span>');
-  if (it.own) tags.push('<span class="tag own">我補的</span>');
+  if (it.own) tags.push('<span class="tag own">門市補的</span>');
   if (opt.date){
     const d = daysLeft(opt.date);
     tags.unshift(`<span class="days ${d <= 7 ? 'urgent' : ''}">${fmtDate(opt.date)}・${d < 0 ? '已過期 ' + (-d) + ' 天' : d === 0 ? '今天到期' : '剩 ' + d + ' 天'}</span>`);
@@ -601,7 +613,7 @@ function showSheet(){
   $('sheetNext').disabled = sheetIdx >= sheetList.length - 1;
   $('sheetStar').textContent = favs.has(k) ? '★ 已收藏' : '☆ 收藏';
   $('sheetEdit').hidden = !it.own;
-  if (it.own) $('sheetMeta').innerHTML += '<br><span style="color:#7c3aed">這是你自己補的商品</span>';
+  if (it.own) $('sheetMeta').innerHTML += '<br><span style="color:#7c3aed">☁️ 門市補的商品（全店共用）</span>';
   recent = [k, ...recent.filter(x => x !== k)].slice(0, 50); store.set('bc_recent', recent);
 }
 function closeSheet(fromPop){
@@ -744,18 +756,37 @@ function refreshDay(){ const t = dateKey(); if (t !== lastDay){ lastDay = t; upd
 setInterval(refreshDay, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDay(); });
 
-/* ---------- 自己補商品 ---------- */
-let editing = null;
-function saveOwn(){ store.set('bc_own', own); mergeOwn(); buildEvents(); }
+/* ---------- 門市補商品（雲端共用） ---------- */
+let editing = null, saving = false;
+function saveOwn(){ store.set('bc_cloud', own); mergeOwn(); buildEvents(); }
+async function syncCloud(silent){
+  try{
+    const rows = await sb('GET', '?select=id,barcode,code,title&deleted=eq.false&order=created_at.desc&limit=5000');
+    own = rows.map(fromRow); saveOwn();
+    if (loadState === 'ready' && !$('form').classList.contains('open') && !$('sheet').classList.contains('open')) render();
+    await migrateLocal();
+  }catch(e){ if (!silent) toast('雲端連線失敗，先顯示上次的資料'); }
+}
+// 以前存在這支手機的補商品，自動搬到雲端（只做一次）
+async function migrateLocal(){
+  const old = store.get('bc_own', []);
+  if (!old.length) return;
+  let n = 0;
+  for (const o of old){
+    if (own.find(x => x.ID === o.ID)) continue;
+    try{ const [r] = await sb('POST', '', { barcode: o.ID, code: o.code || '', title: o.title, device: deviceId }); own.unshift(fromRow(r)); n++; }catch{}
+  }
+  store.set('bc_own', []); saveOwn(); render();
+  if (n) toast(`已把這支手機補過的 ${n} 筆搬到雲端 ☁️`);
+}
 function openForm(o, presetID, presetTitle){
   editing = o || null;
-  $('formTitle').textContent = o ? '編輯我補的商品' : '補商品';
+  $('formTitle').textContent = o ? '編輯門市補的商品' : '補商品';
   $('fID').value = o ? o.ID : (presetID || '');
   $('fCode').value = o ? (o.code || '') : '';
   $('fTitle').value = o ? o.title : (presetTitle || '');
   $('formDelete').hidden = !o;
-  $('ownPaste').hidden = true;
-  $('ownStat').textContent = `你目前補了 ${own.length} 筆。資料只存在這支手機，建議偶爾複製備份（可貼到 LINE 記事本保存）。`;
+  $('ownStat').textContent = `全店目前共補了 ${own.length} 筆，大家的手機都看得到。`;
   updatePreview();
   $('form').classList.add('open');
   history.pushState({ form: 1 }, '');
@@ -774,20 +805,37 @@ function updatePreview(){
   if (!id){ p.innerHTML = '<span class="stat">輸入條碼後顯示預覽</span>'; $('fHint').textContent = ''; return; }
   p.innerHTML = '<svg></svg>'; drawBarcode(p.querySelector('svg'), { ID: id, Type: guessType(id) }, false);
   const inBase = baseDb.find(x => x.ID === id), inOwn = own.find(x => x.ID === id && x !== editing);
-  $('fHint').textContent = '格式：' + guessType(id) + (inBase ? `　⚠ 原資料已有：${inBase.Name}` : '') + (inOwn ? `　⚠ 你已經補過：${inOwn.title}` : '');
+  $('fHint').textContent = '格式：' + guessType(id) + (inBase ? `　⚠ 原資料已有：${inBase.Name}` : '') + (inOwn ? `　⚠ 門市已經補過：${inOwn.title}` : '');
 }
-function saveForm(){
+async function saveForm(){
+  if (saving) return;
   const ID = $('fID').value.trim().replace(/\s+/g, ''), code = $('fCode').value.trim(), title = $('fTitle').value.trim();
   if (!ID) return toast('請輸入條碼');
+  if (!/^[0-9A-Za-z]{4,20}$/.test(ID)) return toast('條碼只能是 4～20 位英數字');
   if (!title) return toast('請輸入品名');
+  if (title.length > 80) return toast('品名太長了（最多 80 字）');
   if (code && !/^\d{6}$/.test(code)) return toast('品號要是 6 位數字');
-  if (own.find(x => x.ID === ID && x !== editing)) return toast('這個條碼你已經補過了');
-  let o;
-  if (editing){ Object.assign(editing, { ID, code, title }); o = editing; }
-  else { o = { uid: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ID, code, title, t: Date.now() }; own.unshift(o); }
+  if (own.find(x => x.ID === ID && x !== editing)) return toast('這個條碼門市已經補過了');
+  saving = true; $('formSave').textContent = '儲存中…';
   const wasEdit = !!editing;
+  let o;
+  try{
+    if (editing){
+      const [r] = await sb('PATCH', '?id=eq.' + editing.uid, { barcode: ID, code, title, device: deviceId });
+      o = fromRow(r); own = own.map(x => x.uid === o.uid ? o : x);
+    } else {
+      const [r] = await sb('POST', '', { barcode: ID, code, title, device: deviceId });
+      o = fromRow(r); own.unshift(o);
+    }
+  }catch(e){
+    saving = false; $('formSave').textContent = '儲存';
+    if (e.code === '23505'){ toast('這個條碼剛剛有同事補過了，已重新整理'); syncCloud(true); }
+    else toast('儲存失敗，請確認網路後再試');
+    return;
+  }
+  saving = false; $('formSave').textContent = '儲存';
   saveOwn(); closeForm();
-  toast(wasEdit ? '已更新' : '已補上 ✅');
+  toast(wasEdit ? '已更新 ☁️' : '已補上，全店同步 ☁️');
   const k = 'OWN|' + o.uid;
   afterPop(() => {
     if ($('sheet').classList.contains('open')){ const i = sheetList.findIndex(x => x.own && x.uid === o.uid); if (i >= 0) sheetList[i] = byKey.get(k); showSheet(); }
@@ -796,9 +844,11 @@ function saveForm(){
 }
 async function deleteOwn(){
   if (!editing) return;
-  if (!await confirmBox(`確定刪除你補的「${editing.title}」？`)) return;
-  const k = 'OWN|' + editing.uid;
-  own = own.filter(x => x !== editing); favs.delete(k); store.set('bc_favs', [...favs]);
+  if (!await confirmBox(`確定刪除「${editing.title}」？全店的手機都會一起移除。`)) return;
+  const target = editing, k = 'OWN|' + target.uid;
+  try{ await sb('PATCH', '?id=eq.' + target.uid, { deleted: true, device: deviceId }); }
+  catch{ return toast('刪除失敗，請確認網路後再試'); }
+  own = own.filter(x => x.uid !== target.uid); favs.delete(k); store.set('bc_favs', [...favs]);
   saveOwn(); closeForm(); afterPop(() => { closeSheet(); render(); }); toast('已刪除');
 }
 $('fab').onclick = () => { const q = $('kw').value.trim(); openForm(null, page === 'search' && /^\d{8,14}$/.test(q) ? q : ''); };
@@ -808,21 +858,10 @@ $('formDelete').onclick = deleteOwn;
 $('fScan').onclick = () => startScan('form');
 $('fID').addEventListener('input', updatePreview);
 $('sheetEdit').onclick = () => { const it = sheetList[sheetIdx]; if (it && it.own) openForm(own.find(x => x.uid === it.uid)); };
-$('ownCopy').onclick = async () => {
-  if (!own.length) return toast('還沒有補任何商品');
-  const text = JSON.stringify(own.map(({ID, code, title}) => ({ID, code, title})));
-  try{ await navigator.clipboard.writeText(text); toast(`已複製 ${own.length} 筆，貼到 LINE 記事本保存`); }
-  catch{ $('ownPaste').hidden = false; $('ownPaste').value = text; toast('無法自動複製，請手動全選框內文字複製'); }
-};
-$('ownPasteBtn').onclick = () => {
-  const box = $('ownPaste');
-  if (box.hidden || !box.value.trim()){ box.hidden = false; box.value = ''; box.focus(); return; }
-  try{
-    const arr = JSON.parse(box.value.trim()); let n = 0;
-    arr.forEach(x => { if (x && x.ID && x.title && !own.find(o => o.ID === String(x.ID))){ own.push({ uid: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ID: String(x.ID), code: x.code || '', title: x.title, t: Date.now() }); n++; } });
-    saveOwn(); box.value = ''; box.hidden = true; closeForm(); afterPop(render); toast(`已還原 ${n} 筆`);
-  }catch{ toast('備份文字格式不對'); }
-};
+// 打開 App、從背景切回來、每 2 分鐘，自動抓同事新補的商品
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncCloud(true); });
+setInterval(() => { if (!document.hidden) syncCloud(true); }, 120000);
+syncCloud();
 
 loadData();
 render();
