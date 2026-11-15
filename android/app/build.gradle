@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
   namespace 'com.bk.barcode'
   compileSdk 34
-  defaultConfig { applicationId "com.bk.barcode"; minSdk 24; targetSdk 34; versionCode 1; versionName "1.0" }
+  defaultConfig { applicationId "com.bk.barcode"; minSdk 24; targetSdk 34; versionCode 2; versionName "1.1" }
   // 簽章金鑰不放在公開倉庫。打包時用環境變數提供：KEYSTORE_FILE / KEYSTORE_PASS / KEY_ALIAS / KEY_PASS
   signingConfigs {
     release {

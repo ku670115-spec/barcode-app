@@ -24,7 +24,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private static final String APP_URL = "https://bk-barcode.netlify.app/";
+    private static final String APP_URL = "https://tiaoma-tong.netlify.app/";
     private static final int REQ_CAMERA = 1;
     private WebView web;
     private LinearLayout errorView;
@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
-                if (u.getHost() != null && u.getHost().endsWith("bk-barcode.netlify.app")) return false;
+                if (u.getHost() != null && u.getHost().endsWith("tiaoma-tong.netlify.app")) return false;
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
                 return true;
             }
