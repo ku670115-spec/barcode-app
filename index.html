@@ -374,7 +374,18 @@ function useData(text, source){
   buildEvents(); updateBadge(); render();
 }
 function mergeOwn(){
-  db = own.map(ownToItem).concat(baseDb);
+  // 門市補的條碼若和原資料相同 → 視為「修正」：取代原資料那筆，但保留效期、活動、下架資訊
+  const ownItems = own.map(ownToItem), byID = new Map(ownItems.map(it => [it.ID, it]));
+  const rest = [];
+  baseDb.forEach(b => {
+    const o = byID.get(b.ID);
+    if (!o){ rest.push(b); return; }
+    if (!o.orig){ o.orig = b.Name; o.Type = b.Type; }
+    o.events = [...new Set(o.events.concat(b.events))]; o.Event = o.events.join('/');
+    o.dates = [...new Set(o.dates.concat(b.dates))].sort(); o.Expiry = [o.Expiry, b.Expiry].filter(Boolean).join('/');
+    o.Down = o.Down || b.Down;
+  });
+  db = ownItems.concat(rest);
   byKey = new Map(db.map(it => [keyOf(it), it]));
   $('stat').textContent = `共 ${baseDb.length} 筆` + (own.length ? `＋門市補的 ${own.length} 筆` : '') + (lastSource ? `・${lastSource}` : '');
 }
@@ -423,7 +434,7 @@ function cardHTML(it, opt = {}){
   if (it.Down) cls += ' down';
   const tags = [];
   if (it.Down) tags.push('<span class="tag down">已下架</span>');
-  if (it.own) tags.push('<span class="tag own">門市補的</span>');
+  if (it.own) tags.push(it.orig ? '<span class="tag own">已修正</span>' : '<span class="tag own">門市補的</span>');
   if (opt.date){
     const d = daysLeft(opt.date);
     tags.unshift(`<span class="days ${d <= 7 ? 'urgent' : ''}">${fmtDate(opt.date)}・${d < 0 ? '已過期 ' + (-d) + ' 天' : d === 0 ? '今天到期' : '剩 ' + d + ' 天'}</span>`);
@@ -612,8 +623,11 @@ function showSheet(){
   $('sheetPrev').disabled = sheetIdx <= 0;
   $('sheetNext').disabled = sheetIdx >= sheetList.length - 1;
   $('sheetStar').textContent = favs.has(k) ? '★ 已收藏' : '☆ 收藏';
-  $('sheetEdit').hidden = !it.own;
-  if (it.own) $('sheetMeta').innerHTML += '<br><span style="color:#7c3aed">☁️ 門市補的商品（全店共用）</span>';
+  $('sheetEdit').hidden = false;
+  $('sheetEdit').textContent = it.own ? '✏️ 編輯' : '✏️ 修正';
+  if (it.own) $('sheetMeta').innerHTML += it.orig
+    ? `<br><span style="color:#7c3aed">☁️ 門市已修正（原資料：${esc(it.orig)}）</span>`
+    : '<br><span style="color:#7c3aed">☁️ 門市補的商品（全店共用）</span>';
   recent = [k, ...recent.filter(x => x !== k)].slice(0, 50); store.set('bc_recent', recent);
 }
 function closeSheet(fromPop){
@@ -779,11 +793,11 @@ async function migrateLocal(){
   store.set('bc_own', []); saveOwn(); render();
   if (n) toast(`已把這支手機補過的 ${n} 筆搬到雲端 ☁️`);
 }
-function openForm(o, presetID, presetTitle){
+function openForm(o, presetID, presetTitle, presetCode, fixing){
   editing = o || null;
-  $('formTitle').textContent = o ? '編輯門市補的商品' : '補商品';
+  $('formTitle').textContent = o ? '編輯門市補的商品' : fixing ? '修正商品資料' : '補商品';
   $('fID').value = o ? o.ID : (presetID || '');
-  $('fCode').value = o ? (o.code || '') : '';
+  $('fCode').value = o ? (o.code || '') : (presetCode || '');
   $('fTitle').value = o ? o.title : (presetTitle || '');
   $('formDelete').hidden = !o;
   $('ownStat').textContent = `全店目前共補了 ${own.length} 筆，大家的手機都看得到。`;
@@ -805,7 +819,7 @@ function updatePreview(){
   if (!id){ p.innerHTML = '<span class="stat">輸入條碼後顯示預覽</span>'; $('fHint').textContent = ''; return; }
   p.innerHTML = '<svg></svg>'; drawBarcode(p.querySelector('svg'), { ID: id, Type: guessType(id) }, false);
   const inBase = baseDb.find(x => x.ID === id), inOwn = own.find(x => x.ID === id && x !== editing);
-  $('fHint').textContent = '格式：' + guessType(id) + (inBase ? `　⚠ 原資料已有：${inBase.Name}` : '') + (inOwn ? `　⚠ 門市已經補過：${inOwn.title}` : '');
+  $('fHint').textContent = '格式：' + guessType(id) + (inBase ? `　✏️ 儲存後會取代原資料：${inBase.Name}` : '') + (inOwn ? `　⚠ 門市已經補過：${inOwn.title}` : '');
 }
 async function saveForm(){
   if (saving) return;
@@ -838,7 +852,12 @@ async function saveForm(){
   toast(wasEdit ? '已更新 ☁️' : '已補上，全店同步 ☁️');
   const k = 'OWN|' + o.uid;
   afterPop(() => {
-    if ($('sheet').classList.contains('open')){ const i = sheetList.findIndex(x => x.own && x.uid === o.uid); if (i >= 0) sheetList[i] = byKey.get(k); showSheet(); }
+    if ($('sheet').classList.contains('open')){
+      let i = sheetList.findIndex(x => x.own && x.uid === o.uid);
+      if (i < 0) i = sheetList.findIndex(x => x.ID === o.ID);
+      if (i >= 0){ sheetList[i] = byKey.get(k); sheetIdx = i; } else { sheetList = [byKey.get(k)]; sheetIdx = 0; }
+      showSheet();
+    }
     else { $('kw').value = ID; switchPage('search'); openSheet(k); }
   });
 }
@@ -857,7 +876,11 @@ $('formSave').onclick = saveForm;
 $('formDelete').onclick = deleteOwn;
 $('fScan').onclick = () => startScan('form');
 $('fID').addEventListener('input', updatePreview);
-$('sheetEdit').onclick = () => { const it = sheetList[sheetIdx]; if (it && it.own) openForm(own.find(x => x.uid === it.uid)); };
+$('sheetEdit').onclick = () => {
+  const it = sheetList[sheetIdx]; if (!it) return;
+  if (it.own) openForm(own.find(x => x.uid === it.uid));
+  else openForm(null, it.ID, it.title, it.code, true);
+};
 // 打開 App、從背景切回來、每 2 分鐘，自動抓同事新補的商品
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncCloud(true); });
 setInterval(() => { if (!document.hidden) syncCloud(true); }, 120000);
